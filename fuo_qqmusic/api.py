@@ -343,8 +343,55 @@ class API(object):
 
     def user_detail(self, uid):
         """
-        this API can be called only when user has logged in
+        this API can be called only when user has logged in.
+
+        Tries the modern musicu.fcg RPC (GetHomepageHeader) first;
+        falls back to the legacy fcg_get_profile_homepage.fcg endpoint
+        when the RPC rejects the session. Both endpoints return
+        ``data`` on success; anything else raises :class:`CodeShouldBe0`
+        with the raw response so callers can inspect ``code`` /
+        ``subcode``.
         """
+        # Modern endpoint: u.y.qq.com/cgi-bin/musicu.fcg via GetHomepageHeader.
+        try:
+            payload = {
+                'comm': {
+                    'g_tk': self.get_token_from_cookies(),
+                    'uin': uid,
+                    'format': 'json',
+                    'ct': 20,
+                    'cv': 1770,
+                    'authst': (self._cookies or {}).get('qm_keyst', ''),
+                },
+                'req_0': {
+                    'module': 'music.profile.homepage.GetHomepageHeader',
+                    'method': 'GetHomepageHeader',
+                    'param': {'uin': uid},
+                },
+            }
+            js = self.rpc(payload)
+            req0 = js.get('req_0', {})
+            if req0.get('code') == 0 and req0.get('data'):
+                data = req0['data']
+                # Normalize the shape so the rest of the code path
+                # (written against the legacy endpoint) still works:
+                # surface creator / fav info under the same keys.
+                # Ensure 'creator' exists in the dict; mutate the dict
+                # in place rather than a copy returned by .get() or {}.
+                data.setdefault('creator', {})
+                data['creator'].setdefault('uin', uid)
+                data['creator'].setdefault(
+                    'fav_pid',
+                    data.get('mymusic', [{}])[0].get('id'),
+                )
+                return data
+        except CodeShouldBe0:
+            # Fall through to the legacy endpoint below.
+            pass
+
+        # Legacy endpoint — known to return code 1000 for expired or
+        # fully-rejected sessions; kept as a last-ditch probe so the
+        # caller at least gets the same error code for both branches.
         url = api_base_url + '/rsc/fcgi-bin/fcg_get_profile_homepage.fcg'
         params = {
             # 这两个字段意义不明，不过至少固定为此值时可正常使用

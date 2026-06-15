@@ -120,9 +120,22 @@ class QQProvider(AbstractProvider, ProviderV2):
         # try to extract current user
         try:
             user = provider.user_get(uin)
-        except QQIOError:
+        except QQIOError as e:
             provider.api.set_cookies(None)
-            return None, 'get user info with cookies failed, expired cookies?'
+            # QQ Music distinguishes a few failure modes; surface them
+            # distinctly so the FeelUOwn UI / log can prompt the user
+            # to re-login via the webview instead of just saying
+            # "expired cookies?".
+            # 1000 / 500003: legacy endpoint / modern RPC both reject
+            # the session — most often expired cookies.
+            # 4000 + "privacy": cookies exist but are stale (a quirk of
+            # the fav endpoint that signals "login required").
+            msg = str(e)
+            if 'code 1000' in msg or 'code 500003' in msg:
+                return None, ('QQ 音乐 API 已拒绝此 cookies,请点击 '
+                              '"网页登录" 重新扫码 (code=%s)' % msg)
+            return None, ('get user info with cookies failed (%s); '
+                          'please re-login via webview' % msg)
         return user, ''
 
     def use_model_v2(self, mtype):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from setuptools import setup
+from setuptools import find_packages, setup
 
 
 setup(
@@ -9,9 +9,10 @@ setup(
     description='feeluown qqmusic plugin',
     author='Cosven',
     author_email='yinshaowen241@gmail.com',
-    packages=[
-        'fuo_qqmusic',
-    ],
+    # find_packages() picks up fuo_qqmusic/ and fuo_qqmusic/i18n/
+    # (the previous hard-coded 'fuo_qqmusic' list missed the i18n
+    # subpackage, which broke pip-install of this plugin).
+    packages=find_packages(include=['fuo_qqmusic', 'fuo_qqmusic.*']),
     package_data={
         '': ['assets/*.svg',]
     },
